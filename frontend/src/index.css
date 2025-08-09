@@ -1,0 +1,37 @@
+@import 'tailwindcss/base';
+@import 'tailwindcss/components';
+@import 'tailwindcss/utilities';
+
+/* Custom styles for Quill */
+.ql-editor {
+  min-height: 200px; /* Adjust as needed */
+  max-height: 600px;
+  overflow-y: auto;
+  font-family: 'Inter', sans-serif; /* Default font */
+}
+
+.ql-container {
+  font-family: 'Inter', sans-serif;
+  font-size: 1rem;
+}
+
+.ql-toolbar {
+  border-bottom: 1px solid #e2e8f0;
+  padding: 8px;
+}
+
+/* Style for the read-only Quill viewer */
+.ql-viewer {
+    padding: 1rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.5rem;
+    background-color: #f8fafc;
+    min-height: 500px; /* Ensure it takes up space */
+    max-height: 80vh;
+    overflow-y: auto;
+}
+
+/* Custom styles for input fields in column 3 */
+.editable-field {
+    @apply w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent;
+}
