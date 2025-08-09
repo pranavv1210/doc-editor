@@ -1,9 +1,8 @@
 Flask==2.3.2
 Flask-Cors==3.0.10
-PyMuPDF==1.23.8 # fitz
+PyMuPDF==1.23.8
 python-docx==1.1.0
-python-dotenv==1.0.1 # For LABEL_STUDIO_API_KEY
-label-studio-sdk==0.17.0 # Corrected package name
+python-dotenv==1.0.1
 requests==2.31.0
-google-generativeai==0.3.0 # For Gemini API
-reportlab==4.1.0 # For basic PDF generation from Quill content
+google-generativeai==0.3.0
+reportlab==4.1.0

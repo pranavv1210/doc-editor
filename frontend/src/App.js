@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import Quill from 'quill';
-import 'quill/dist/quill.snow.css'; // Import Quill's CSS
+// IMPORTANT: Quill is no longer imported for the viewer.
+// Only its CSS is needed for basic styling of the output HTML.
+import 'quill/dist/quill.snow.css'; // Still needed for basic ql-viewer styles
 import './index.css'; // Your Tailwind CSS imports are here
 
 function App() {
-  const quillViewerRef = useRef(null); // Ref for the read-only Quill viewer (Column 1)
-  const quillInstanceRef = useRef(null); // To store Quill instance
+  const quillViewerRef = useRef(null); // This ref now points to a plain div
 
   const [selectedFile, setSelectedFile] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -14,44 +14,62 @@ function App() {
   const [extractedData, setExtractedData] = useState({}); // Read-only AI-extracted data
   const [editableData, setEditableData] = useState({}); // Editable AI-extracted data
   const [parsedDataOrder, setParsedDataOrder] = useState([]); // Order of fields from AI
-  const [rawDocumentText, setRawDocumentText] = useState(""); // Raw text for Label Studio export
-  const [labelStudioProjects, setLabelStudioProjects] = useState([]);
-  const [labelStudioStatus, setLabelStudioStatus] = useState(null);
-  const [projectIdToImport, setProjectIdToImport] = useState('');
-  const [showProjectModal, setShowProjectModal] = useState(false);
-  const [projectTypeForLS, setProjectTypeForLS] = useState('generic'); // 'generic', 'resume', 'skills', 'education'
   const [message, setMessage] = useState('');
+  const [viewerHtml, setViewerHtml] = useState(''); // State to store generated HTML for the viewer
 
-  // Initialize Quill viewer for Column 1
-  useEffect(() => {
-    // Initialize Quill only once
-    if (quillViewerRef.current && !quillInstanceRef.current) {
-      quillInstanceRef.current = new Quill(quillViewerRef.current, {
-        theme: 'snow',
-        readOnly: true, // Make it read-only
-        modules: {
-          toolbar: false // No toolbar for viewer
+  // Function to convert Quill Delta to simple HTML
+  // This function is now the SOLE source of HTML for the viewer.
+  const convertDeltaToHtml = useCallback((delta) => {
+    let html = '';
+    if (!delta || !Array.isArray(delta)) {
+      return '';
+    }
+
+    delta.forEach(op => {
+      if (typeof op.insert === 'string') {
+        let text = op.insert;
+        let attributes = op.attributes || {};
+
+        // Replace newlines with <br> for display in HTML
+        text = text.replace(/\n/g, '<br/>');
+
+        // Apply basic formatting using inline styles
+        let style = '';
+        let tag = 'span'; // Default tag
+
+        if (attributes.bold) style += 'font-weight: bold;';
+        if (attributes.italic) style += 'font-style: italic;';
+        // Ensure size is a valid number for px
+        if (attributes.size && typeof attributes.size === 'number') style += `font-size: ${attributes.size}px;`;
+        if (attributes.font) style += `font-family: "${attributes.font}";`;
+
+        // If the text contains a newline, it's often a block-level element
+        if (op.insert.includes('\n') && op.insert.trim() === '') {
+            // If it's just a newline, use a <br/> or empty div for spacing
+            html += '<br/>'; 
+            return; // Skip wrapping empty newlines in spans/divs
+        } else if (op.insert.includes('\n')) {
+            // For text followed by newline, use a div to ensure block behavior
+            tag = 'div';
         }
-      });
-      quillInstanceRef.current.disable(); // Ensure it's not editable
-    }
 
-    // Update Quill's content whenever quillContentDelta changes
-    const editor = quillInstanceRef.current;
-    if (editor && quillContentDelta) {
-        editor.setContents(quillContentDelta);
-    }
-
-    // Cleanup function: Destroy Quill instance when component unmounts
-    // or when the ref changes (though ref should be stable for this use case)
-    return () => {
-      if (quillInstanceRef.current) {
-        // Not strictly necessary to destroy, but good practice if the ref could change or component re-mounts often
-        // However, for a single ref on the page, the instance typically persists for the component's lifetime.
-        // The error is more likely from `setContents` interactions.
+        if (style) {
+            html += `<${tag} style="${style}">${text}</${tag}>`;
+        } else {
+            html += `<${tag}>${text}</${tag}>`;
+        }
       }
-    };
-  }, [quillContentDelta]); // Keep quillContentDelta as a dependency to update content
+      // Future: Handle other Quill delta types like embeds (images, videos) here if needed.
+    });
+    return html;
+  }, []);
+
+  // Effect: Convert quillContentDelta to HTML for the viewer
+  // This effect runs whenever quillContentDelta changes.
+  useEffect(() => {
+    setViewerHtml(convertDeltaToHtml(quillContentDelta));
+  }, [quillContentDelta, convertDeltaToHtml]);
+
 
   // Function to debounce state updates (useful for frequent input changes)
   const debounce = (func, delay) => {
@@ -63,14 +81,13 @@ function App() {
   };
 
   // Reconstructs Quill delta from editableData for dynamic reflection in Column 1
-  const updateQuillContentFromEditableData = useCallback(debounce((data) => {
+  const updateQuillContentLogic = useCallback(debounce((data) => {
     const newDelta = [];
-    if (data && parsedDataOrder.length > 0) { // Ensure order is maintained
+    if (data && parsedDataOrder.length > 0) {
       parsedDataOrder.forEach(key => {
         const value = data[key];
-        if (value !== undefined && value !== null) { // Only add if value exists
+        if (value !== undefined && value !== null) {
           let displayValue = value;
-          // Attempt to pretty print JSON if it's a stringified object/array
           try {
             const parsed = JSON.parse(value);
             if (typeof parsed === 'object' && parsed !== null) {
@@ -80,11 +97,12 @@ function App() {
             // Not a valid JSON string, use as is
           }
 
+          // Create a simple delta for display in the viewer
           newDelta.push({ insert: `${key.replace(/_/g, ' ').toUpperCase()}:\n`, attributes: { bold: true, size: 'large' } });
           newDelta.push({ insert: `${displayValue}\n\n` });
         }
       });
-    } else if (data) { // Fallback if no specific order is available, just iterate keys
+    } else if (data) {
          Object.entries(data).forEach(([key, value]) => {
             if (value !== undefined && value !== null) {
                 let displayValue = value;
@@ -101,12 +119,13 @@ function App() {
          });
     }
     setQuillContentDelta(newDelta);
-  }, 300), [parsedDataOrder, setQuillContentDelta]); // ADDED parsedDataOrder and setQuillContentDelta to dependencies
+  }, 300), [parsedDataOrder, setQuillContentDelta]);
 
-  // Effect to update Column 1 when editableData changes
+  // Effect to trigger the debounced update when editableData changes
   useEffect(() => {
-    updateQuillContentFromEditableData(editableData);
-  }, [editableData, updateQuillContentFromEditableData]);
+    updateQuillContentLogic(editableData);
+  }, [editableData, updateQuillContentLogic]);
+
 
   // Handle file selection
   const handleFileChange = (event) => {
@@ -117,7 +136,7 @@ function App() {
     setExtractedData({});
     setEditableData({});
     setParsedDataOrder([]);
-    setRawDocumentText("");
+    setViewerHtml(''); // Clear viewer HTML on new file selection
   };
 
   // Handle file upload and initial parsing
@@ -150,9 +169,8 @@ function App() {
 
       setQuillContentDelta(data.quill_content_delta || []);
       setExtractedData(data.parsed_data || {});
-      setEditableData(data.parsed_data || {}); // Initialize editable with extracted
+      setEditableData(data.parsed_data || {});
       setParsedDataOrder(data.parsed_data_order || Object.keys(data.parsed_data || {}));
-      setRawDocumentText(data.raw_text_content || "");
 
       setMessage('File processed and data extracted successfully!');
 
@@ -186,7 +204,7 @@ function App() {
         },
         body: JSON.stringify({
           edited_data: editableData,
-          quill_content_delta: quillContentDelta, // Save the current state of the Quill view
+          quill_content_delta: quillContentDelta,
         }),
       });
 
@@ -218,7 +236,7 @@ function App() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          quill_content_delta: quillContentDelta, // Export what's shown in Column 1
+          quill_content_delta: quillContentDelta,
         }),
       });
 
@@ -230,133 +248,11 @@ function App() {
       const data = await response.json();
       setMessage(data.message);
       if (data.pdf_download_url) {
-        // Trigger client-side download
         window.open(`http://localhost:5000${data.pdf_download_url}`, '_blank');
       }
     } catch (err) {
       console.error('Export PDF Error:', err);
       setError(`Error: ${err.message}`);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Label Studio Integration functions
-  const fetchLabelStudioStatus = useCallback(async () => {
-    try {
-      const response = await fetch('http://localhost:5000/label-studio-status');
-      const data = await response.json();
-      setLabelStudioStatus(data);
-    } catch (err) {
-      console.error("Failed to fetch Label Studio status:", err);
-      setLabelStudioStatus({ success: false, status: 'unknown_error', message: "Could not connect to backend for Label Studio status." });
-    }
-  }, []);
-
-  const fetchLabelStudioProjects = useCallback(async () => {
-    if (labelStudioStatus && labelStudioStatus.success) {
-      try {
-        const response = await fetch('http://localhost:5000/label-studio-projects');
-        const data = await response.json();
-        if (data.success) {
-          setLabelStudioProjects(data.projects);
-        } else {
-          setError(`Failed to get LS projects: ${data.error}`);
-        }
-      } catch (err) {
-        console.error("Failed to fetch Label Studio projects:", err);
-        setError("Failed to fetch Label Studio projects.");
-      }
-    }
-  }, [labelStudioStatus]);
-
-  useEffect(() => {
-    fetchLabelStudioStatus();
-  }, [fetchLabelStudioStatus]);
-
-  useEffect(() => {
-    if (labelStudioStatus?.success) {
-      fetchLabelStudioProjects();
-    }
-  }, [labelStudioStatus, fetchLabelStudioProjects]);
-
-  const handleExportToLabelStudio = async () => {
-    setLoading(true);
-    setError(null);
-    setMessage(null);
-
-    try {
-      const response = await fetch('http://localhost:5000/export-to-label-studio', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          parsed_data: editableData, // Send the currently editable data
-          raw_document_text: rawDocumentText, // Send original raw text for annotation
-          project_type: projectTypeForLS,
-        }),
-      });
-
-      if (!response.ok) {
-        const errData = await response.json();
-        throw new Error(errData.error || 'Export to Label Studio failed');
-      }
-
-      const data = await response.json();
-      setMessage(data.message);
-      setShowProjectModal(false); // Close modal on success
-      fetchLabelStudioProjects(); // Refresh project list
-      if (data.label_studio_url) {
-        window.open(data.label_studio_url, '_blank');
-      }
-    } catch (err) {
-      console.error('Export to LS Error:', err);
-      setError(`Error exporting to Label Studio: ${err.message}`);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleImportFromLabelStudio = async () => {
-    if (!projectIdToImport) {
-      setError('Please enter a Project ID to import.');
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-    setMessage(null);
-
-    try {
-      const response = await fetch('http://localhost:5000/import-from-label-studio', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ project_id: projectIdToImport }),
-      });
-
-      if (!response.ok) {
-        const errData = await response.json();
-        throw new Error(errData.error || 'Import from Label Studio failed');
-      }
-
-      const data = await response.json();
-      setMessage(data.message + (data.insights_file ? ` (Insights file: ${data.insights_file})` : ''));
-      console.log('Annotated Data:', data.annotated_data);
-
-      if (data.insights_download_url) {
-        window.open(`http://localhost:5000${data.insights_download_url}`, '_blank');
-      }
-
-      // Optionally, you could update `editableData` with imported annotations
-      // This would require mapping LS annotations back to your structured data format.
-      // For now, we just log it.
-
-    } catch (err) {
-      console.error('Import from LS Error:', err);
-      setError(`Error importing from Label Studio: ${err.message}`);
     } finally {
       setLoading(false);
     }
@@ -425,16 +321,21 @@ function App() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-7xl mx-auto">
-        {/* Column 1: Live Input View Panel (Read-only Quill) */}
+        {/* Column 1: Live Input View Panel (Plain HTML from Quill Delta) */}
         <div className="bg-white p-6 rounded-xl shadow-lg flex flex-col">
           <h2 className="text-xl font-semibold mb-4 text-gray-700">Live Document View</h2>
           <div className="flex-grow">
-            <div ref={quillViewerRef} className="ql-viewer">
-              {/* Quill will render content here */}
-              {quillContentDelta.length === 0 && (
-                <p className="text-gray-500 text-center py-10">Upload a document (PDF, DOCX, TXT) to see its live view here. Edits in the third column will dynamically reflect here.</p>
-              )}
+            <div 
+              ref={quillViewerRef} 
+              // Removed ql-viewer class from here, apply styles directly or via a new class
+              className="p-4 border border-gray-200 rounded-md bg-gray-50 min-h-[500px] max-h-[80vh] overflow-y-auto" 
+              dangerouslySetInnerHTML={{ __html: viewerHtml }}
+            >
+              {/* No children here */}
             </div>
+            {quillContentDelta.length === 0 && !viewerHtml && (
+                <p className="text-gray-500 text-center py-10 mt-4">Upload a document (PDF, DOCX, TXT) to see its live view here. Edits in the third column will dynamically reflect here.</p>
+            )}
           </div>
         </div>
 
@@ -455,7 +356,7 @@ function App() {
                         : String(extractedData[key])
                     }</p>
                   </div>
-                ) : null // Don't render if value is null or undefined
+                ) : null
               ))
             )}
           </div>
@@ -486,120 +387,6 @@ function App() {
           </div>
         </div>
       </div>
-
-      {/* Label Studio Integration Section */}
-      <div className="max-w-7xl mx-auto bg-white rounded-xl shadow-lg p-6 mt-8">
-        <h2 className="text-xl font-semibold mb-4 text-gray-700">Label Studio Integration</h2>
-        <p className="text-sm text-gray-600 mb-4">
-          Status: {labelStudioStatus ? (
-            labelStudioStatus.success ?
-              <span className="text-green-600 font-medium">Connected ({labelStudioStatus.total_projects} projects)</span> :
-              <span className="text-red-600 font-medium">Disconnected ({labelStudioStatus.status}: {labelStudioStatus.message})</span>
-          ) : 'Checking...'}
-        </p>
-        
-        {!labelStudioStatus?.success && labelStudioStatus?.setup_instructions && (
-          <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-4">
-            <p className="font-semibold text-yellow-800">Label Studio Setup Required:</p>
-            <ul className="list-disc list-inside text-yellow-700 text-sm">
-              {labelStudioStatus.setup_instructions.map((inst, idx) => (
-                <li key={idx}>{inst}</li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        <div className="flex flex-col md:flex-row gap-4 mb-4">
-          <button
-            onClick={() => setShowProjectModal(true)}
-            disabled={loading || !labelStudioStatus?.success || Object.keys(editableData).length === 0}
-            className="w-full md:w-auto px-6 py-3 bg-indigo-600 text-white rounded-lg
-                       hover:bg-indigo-700 transition-colors duration-200
-                       disabled:opacity-50 disabled:cursor-not-allowed font-medium shadow-md"
-          >
-            Export to Label Studio
-          </button>
-          
-          <input
-            type="text"
-            placeholder="Enter Project ID to import"
-            value={projectIdToImport}
-            onChange={(e) => setProjectIdToImport(e.target.value)}
-            className="editable-field flex-grow md:flex-grow-0"
-            disabled={!labelStudioStatus?.success}
-          />
-          <button
-            onClick={handleImportFromLabelStudio}
-            disabled={loading || !labelStudioStatus?.success || !projectIdToImport}
-            className="w-full md:w-auto px-6 py-3 bg-indigo-600 text-white rounded-lg
-                       hover:bg-indigo-700 transition-colors duration-200
-                       disabled:opacity-50 disabled:cursor-not-allowed font-medium shadow-md"
-          >
-            Import from Label Studio
-          </button>
-        </div>
-
-        {labelStudioProjects.length > 0 && labelStudioStatus?.success && (
-          <div className="mt-4">
-            <h3 className="text-lg font-semibold mb-2">Your Label Studio Projects:</h3>
-            <ul className="list-disc list-inside text-gray-700">
-              {labelStudioProjects.map(project => (
-                <li key={project.id} className="mb-1 text-sm">
-                  <strong>{project.title}</strong> (ID: {project.id}) - Tasks: {project.task_count}, Annotations: {project.annotation_count}
-                  <a
-                    href={`${labelStudioStatus.url}/projects/${project.id}/data`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="ml-2 text-blue-500 hover:underline"
-                  >
-                    View
-                  </a>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </div>
-
-      {/* Export to Label Studio Modal */}
-      {showProjectModal && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-75 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
-            <h2 className="text-xl font-semibold mb-4 text-gray-800">Export to Label Studio</h2>
-            <div className="mb-4">
-              <label htmlFor="projectType" className="block text-sm font-medium text-gray-700 mb-1">
-                Project Type:
-              </label>
-              <select
-                id="projectType"
-                value={projectTypeForLS}
-                onChange={(e) => setProjectTypeForLS(e.target.value)}
-                className="editable-field"
-              >
-                <option value="generic">Generic Document Annotation</option>
-                <option value="resume">Resume Annotation</option>
-                <option value="skills">Skill Extraction</option>
-                <option value="education">Education Validation</option>
-              </select>
-            </div>
-            <div className="flex justify-end gap-3">
-              <button
-                onClick={() => setShowProjectModal(false)}
-                className="px-4 py-2 bg-gray-300 text-gray-800 rounded-lg hover:bg-gray-400 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleExportToLabelStudio}
-                disabled={loading}
-                className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50"
-              >
-                {loading ? 'Exporting...' : 'Export'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
