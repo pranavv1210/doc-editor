@@ -1,8 +1,3 @@
-You're absolutely right\! My apologies. The Markdown formatting for the directory structure often breaks without proper indentation, making it hard to read.
-
-Here's the updated `README.md` with the project structure section correctly formatted so it displays clearly:
-
-```markdown
 # 📄✨ Document Editor with AI-Powered Extraction
 
 This is a full-stack web application designed to streamline document processing and data extraction. It allows users to upload various document types (PDF, DOCX, TXT), automatically extract key information using Google's Gemini AI, review and edit that data in a structured interface, and then save or export the refined information.
@@ -148,3 +143,4 @@ document-editor/
 * **Batch Processing**: Allow uploading and processing multiple documents at once.
 * **Database Integration**: Store extracted and edited data in a persistent database (e.g., MongoDB, PostgreSQL) instead of just local JSON files.
 ````
+
