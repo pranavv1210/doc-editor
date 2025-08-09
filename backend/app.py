@@ -9,7 +9,7 @@ import json
 import google.generativeai as genai
 import time
 from dotenv import load_dotenv
-import requests # Ensure requests is imported at the top
+import requests
 
 load_dotenv()
 
@@ -170,7 +170,6 @@ def save_quill_to_pdf(content_delta, output_path):
 app = Flask(__name__)
 CORS(app)
 
-# Configure Gemini API
 API_KEY = "AIzaSyBF7M96A9L4J9_XSzRTUgrWH1RVaisTRKY" 
 genai.configure(api_key=API_KEY)
 GEMINI_MODEL = "gemini-2.5-flash-preview-05-20" 
@@ -178,7 +177,6 @@ GEMINI_MODEL = "gemini-2.5-flash-preview-05-20"
 def _gemini_generate_content_with_backoff(model, payload, retries=5, delay=1):
     for i in range(retries):
         try:
-            # FIX: Corrected API URL string - removed Markdown link formatting
             api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={API_KEY}"
             
             headers = {'Content-Type': 'application/json'}
@@ -191,11 +189,10 @@ def _gemini_generate_content_with_backoff(model, payload, retries=5, delay=1):
                result['candidates'][0]['content']['parts'][0].get('text'):
                 raw_gemini_text_response = result['candidates'][0]['content']['parts'][0].get('text', '')
                 
-                # FIX: More robust stripping of Markdown code block fences
                 cleaned_response = raw_gemini_text_response.strip()
                 if cleaned_response.startswith('```json'):
                     cleaned_response = cleaned_response[len('```json'):].strip()
-                elif cleaned_response.startswith('```'): # Catch generic code blocks too
+                elif cleaned_response.startswith('```'):
                     cleaned_response = cleaned_response[len('```'):].strip()
                 
                 if cleaned_response.endswith('```'):
@@ -225,16 +222,12 @@ def _gemini_generate_content_with_backoff(model, payload, retries=5, delay=1):
 
 def extract_document_details(raw_text):
     prompt = f"""
-    Given the following document text, extract key information and present it as a JSON object.
-    Identify common document fields suchs as:
-    - Name (for resumes/personal documents)
-    - Contact Information (email, phone, address, links)
-    - Dates (e.g., Date of Birth, employment dates, project dates, expiry dates)
-    - Headings/Sections (e.g., Education, Experience, Skills, Objective, Product Name, Ingredients, Instructions, Description, Price, SKU, Manufacturer, etc.)
-    - Key data points relevant to the document type (e.g., for a product label: net weight, nutrition facts, barcode; for a resume: degree, university, job title, company, skills listed).
-    - If a section contains a list (e.g., skills, ingredients), represent it as a JSON array of strings.
-    - If a section contains structured items (e.g., multiple experiences, each with job title, company, dates), represent it as a JSON array of objects.
-    - For general text sections, provide the full text.
+    Given the following document text, extract key information and present it as a single JSON object.
+    The keys of the JSON object should be descriptive field names (e.g., "Name", "Contact Information", "Education", "Skills", "Product Name", "Ingredients").
+    The values should be the extracted content for that field.
+    - If a section contains a list (e.g., skills, ingredients), the value should be a JSON array of strings.
+    - If a section contains structured items (e.g., multiple experiences, each with job title, company, dates), the value should be a JSON array of objects.
+    - For general text sections or single values, the value should be a string.
 
     Return ONLY the JSON object, with no other text or formatting.
 
@@ -256,34 +249,20 @@ def extract_document_details(raw_text):
 
     try:
         json_string = _gemini_generate_content_with_backoff(GEMINI_MODEL, payload)
-        parsed_array = json.loads(json_string)
         
-        if not isinstance(parsed_array, list):
-            print(f"Warning: Gemini API returned non-list JSON: {parsed_array}. Attempting to recover by wrapping in list.")
-            if isinstance(parsed_array, dict):
-                parsed_array = [parsed_array]
-            else:
-                raise ValueError("Gemini API did not return expected JSON array structure.")
+        # FIX: Expect a single JSON object (dictionary) at the top level
+        parsed_object = json.loads(json_string) 
+        
+        if not isinstance(parsed_object, dict):
+            print(f"Warning: Gemini API returned non-dict JSON: {parsed_object}. Expected a dictionary.")
+            raise ValueError("Gemini API did not return expected JSON object structure.")
 
         parsed_data_dict = {}
         parsed_data_order = []
-        for item in parsed_array:
-            field_name = item.get('field_name')
-            field_value_raw = item.get('field_value')
-            field_type = item.get('type')
-
-            if field_name:
-                field_value = field_value_raw
-                if field_type in ["list", "structured_list"] and isinstance(field_value_raw, str):
-                    try:
-                        parsed_json_value = json.loads(field_value_raw)
-                        field_value = parsed_json_value
-                    except json.JSONDecodeError:
-                        print(f"Warning: Expected JSON for field '{field_name}' of type '{field_type}', but parsing failed. Using raw string.")
-                        pass
-
-                parsed_data_dict[field_name] = field_value
-                parsed_data_order.append(field_name)
+        # FIX: Iterate directly over the key-value pairs of the parsed object
+        for field_name, field_value in parsed_object.items():
+            parsed_data_dict[field_name] = field_value
+            parsed_data_order.append(field_name)
 
         return parsed_data_dict, parsed_data_order
     except json.JSONDecodeError as e:
@@ -388,7 +367,8 @@ def save_document():
     try:
         data = request.get_json()
         edited_data = data.get('edited_data', {})
-        quill_delta_content = data.get('quill_content_delta', [])
+        # FIX: Corrected variable name from quill_content_delta to quill_delta_content
+        quill_delta_content = data.get('quill_content_delta', []) 
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         
@@ -402,7 +382,8 @@ def save_document():
 
         output_delta_filename = f"saved_document_quill_delta_{timestamp}.json"
         with open(os.path.join("downloads", output_delta_filename), 'w') as f:
-            json.dump(quill_content_delta, f, indent=2)
+            # FIX: Use the correctly defined variable here
+            json.dump(quill_delta_content, f, indent=2) 
         print(f"Saved Quill delta to {output_delta_filename}")
 
         return jsonify({'message': f'Document saved successfully. Saved as {output_json_filename} and {output_delta_filename}'})
@@ -461,14 +442,8 @@ def download_pdf(filename):
         print(f"Error downloading PDF: {str(e)}")
         return jsonify({'error': f'Failed to download PDF: {str(e)}'}), 400
 
-# Removed all Label Studio related routes
-# @app.route('/export-to-label-studio', methods=['POST'])
-# @app.route('/import-from-label-studio', methods=['POST'])
-# @app.route('/batch-annotation', methods=['POST'])
-# @app.route('/label-studio-projects', methods=['GET'])
-# @app.route('/label-studio-status', methods=['GET'])
-
 if __name__ == '__main__':
     if not os.path.exists("downloads"):
         os.makedirs("downloads")
     app.run(debug=True, port=5000)
+    

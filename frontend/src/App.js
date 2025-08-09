@@ -1,6 +1,4 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-// IMPORTANT: Quill is no longer imported for the viewer.
-// Only its CSS is needed for basic styling of the output HTML.
 import 'quill/dist/quill.snow.css'; // Still needed for basic ql-viewer styles
 import './index.css'; // Your Tailwind CSS imports are here
 
@@ -18,7 +16,6 @@ function App() {
   const [viewerHtml, setViewerHtml] = useState(''); // State to store generated HTML for the viewer
 
   // Function to convert Quill Delta to simple HTML
-  // This function is now the SOLE source of HTML for the viewer.
   const convertDeltaToHtml = useCallback((delta) => {
     let html = '';
     if (!delta || !Array.isArray(delta)) {
@@ -30,26 +27,20 @@ function App() {
         let text = op.insert;
         let attributes = op.attributes || {};
 
-        // Replace newlines with <br> for display in HTML
         text = text.replace(/\n/g, '<br/>');
 
-        // Apply basic formatting using inline styles
         let style = '';
-        let tag = 'span'; // Default tag
+        let tag = 'span';
 
         if (attributes.bold) style += 'font-weight: bold;';
         if (attributes.italic) style += 'font-style: italic;';
-        // Ensure size is a valid number for px
         if (attributes.size && typeof attributes.size === 'number') style += `font-size: ${attributes.size}px;`;
         if (attributes.font) style += `font-family: "${attributes.font}";`;
 
-        // If the text contains a newline, it's often a block-level element
         if (op.insert.includes('\n') && op.insert.trim() === '') {
-            // If it's just a newline, use a <br/> or empty div for spacing
             html += '<br/>'; 
-            return; // Skip wrapping empty newlines in spans/divs
+            return;
         } else if (op.insert.includes('\n')) {
-            // For text followed by newline, use a div to ensure block behavior
             tag = 'div';
         }
 
@@ -59,13 +50,11 @@ function App() {
             html += `<${tag}>${text}</${tag}>`;
         }
       }
-      // Future: Handle other Quill delta types like embeds (images, videos) here if needed.
     });
     return html;
   }, []);
 
   // Effect: Convert quillContentDelta to HTML for the viewer
-  // This effect runs whenever quillContentDelta changes.
   useEffect(() => {
     setViewerHtml(convertDeltaToHtml(quillContentDelta));
   }, [quillContentDelta, convertDeltaToHtml]);
@@ -97,7 +86,6 @@ function App() {
             // Not a valid JSON string, use as is
           }
 
-          // Create a simple delta for display in the viewer
           newDelta.push({ insert: `${key.replace(/_/g, ' ').toUpperCase()}:\n`, attributes: { bold: true, size: 'large' } });
           newDelta.push({ insert: `${displayValue}\n\n` });
         }
@@ -136,7 +124,7 @@ function App() {
     setExtractedData({});
     setEditableData({});
     setParsedDataOrder([]);
-    setViewerHtml(''); // Clear viewer HTML on new file selection
+    setViewerHtml('');
   };
 
   // Handle file upload and initial parsing
@@ -327,7 +315,6 @@ function App() {
           <div className="flex-grow">
             <div 
               ref={quillViewerRef} 
-              // Removed ql-viewer class from here, apply styles directly or via a new class
               className="p-4 border border-gray-200 rounded-md bg-gray-50 min-h-[500px] max-h-[80vh] overflow-y-auto" 
               dangerouslySetInnerHTML={{ __html: viewerHtml }}
             >
